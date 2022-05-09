@@ -835,8 +835,6 @@ int main()
                 execvp(userInput.argv[0], userInput.argv);
                 // exec only returns here if there is an error
                 perror("execvp");
-                freeUserInput(userInput);
-                exit(2);
             }
             else
             {
