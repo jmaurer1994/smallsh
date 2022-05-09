@@ -17,7 +17,7 @@
   status      - provides the exit status of the program, or last child if any
                 have been terminated.
   exit/quit   - terminates the shell program and any child processes (hotkey:
- ctrl^\) foreground and background.
+                ctrl^\) foreground and background.
 
  Any other commands are handled by a call to an exec() function with provided
  arguments. Shell supports input/output redirection as well as optional
