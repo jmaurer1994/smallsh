@@ -60,7 +60,7 @@
  *
  *
  ************************************************************************************************************************************/
-struct userInputStruct // struct to hold payload for command
+struct UserInputStruct // struct to hold payload for command
 {
     char **argv; // must terminated with a NULL pointer for exec
     char *inputDestination_ptr;
@@ -68,7 +68,7 @@ struct userInputStruct // struct to hold payload for command
     int *runInBackground;
     int *checkSum;
 };
-typedef struct userInputStruct userInputStruct;
+typedef struct UserInputStruct UserInputStruct;
 
 // do not look at these
 int currentStatus = 0;
@@ -188,12 +188,17 @@ void handle_SIGQUIT(int signo, siginfo_t *siginfo, void *ucontext) {
 /**********************************************************************************************
  * getInputString
  *
- * Returns pointer to a string retrieved by getline from stdin. Removes
- *trailing \n character
+ *  Description
+ *      Returns pointer to a dynamically allocated string retrieved by getline
+ *      from stdin. Removes trailing \n character. Performs expansion for $$
  *
+ *  Inputs:
+ *      Retrieves user input from stdin
+ *
+ *  Outputs:
+ *      Returns a char* on success. Returns null on failure.
  *********************************************************************************************/
 char *getInputString() {
-
     while (1) {
         char *userInputString = NULL;
         char *expansion_str = NULL;
@@ -204,12 +209,12 @@ char *getInputString() {
         fflush(stdout);
 
         fflush(stdin);
-/*****************************************************************
- *
- * This allocation is causing a memory leak when execvp fails to
- * execute I can't quit fix yet.
- *
- * **************************************************************/
+        /*****************************************************************
+         * TODO
+         * This allocation is causing a memory leak when execvp fails to
+         * execute I can't quit fix yet.
+         *
+         * **************************************************************/
         ssize_t nRead = getline(&temp_str, &userInputStringLength, stdin);
         fflush(stdin);
         if (temp_str == NULL) {
@@ -331,16 +336,16 @@ char *getInputString() {
  * parseToken()
  *
  * Inputs:
- *  userInputStruct userInput
+ *  UserInputStruct userInput
  *  char* token
  *  size_t* argc
  *
  * Outputs:
- * sets argc to number of arguments parsed
- * parses < , > , & out of the token array and builds the userInput struct
+ *  Allocates a pointer for, and sets the value of argc
+ *  parses < , > , & out of the token array and builds the userInput struct
  *
  *********************************************************************************************/
-void parseToken(userInputStruct userInput, char *token, size_t *argc) {
+void parseToken(UserInputStruct userInput, char *token, size_t *argc) {
     // lets take a look at the token
     if (token == NULL) {
         return;
@@ -395,16 +400,16 @@ void parseToken(userInputStruct userInput, char *token, size_t *argc) {
  *  char* userInputString
  *
  * Outputs:
- *  Returns a userInputStruct containing the necessary info to execute a
- *command sent by the user
+ *  Returns a UserInputStruct containing the necessary info to execute a
+ *  command sent by the user.
  *
  *********************************************************************************************/
-userInputStruct getuserInputFromString(char *userInputString) {
+UserInputStruct getuserInputFromString(char *userInputString) {
 
     char *defaultDestination = "/dev/null";
 
     // initialize the struct
-    userInputStruct userInput;
+    UserInputStruct userInput;
     userInput.argv = NULL;
     userInput.inputDestination_ptr = NULL;
     userInput.outputDestination_ptr = NULL;
@@ -512,13 +517,13 @@ userInputStruct getuserInputFromString(char *userInputString) {
 /**********************************************************************************************
  * freeUserInput()
  *
- * Purpose: attempts to free up allocated memory.
+ * Purpose: attempts to free up allocated memory within the UserInputStruct.
  *
  * Inputs:
- *  userInputStruct userInput
+ *  UserInputStruct userInput
  *
  *********************************************************************************************/
-void freeUserInput(userInputStruct userInput) {
+void freeUserInput(UserInputStruct userInput) {
     size_t i = 0;
 
     // free the argv contents
@@ -542,6 +547,12 @@ void freeUserInput(userInputStruct userInput) {
     return;
 }
 
+/**********************************************************************************************
+ * main()
+ *
+ * 
+ *
+ *********************************************************************************************/
 int main() {
     if (control_var) {
         fprintf(stdout,
@@ -552,6 +563,7 @@ int main() {
         control_var = 0;
     }
 
+    //main execution loop
     while (!quit) {
         // register event handlers
         struct sigaction SIGINT_action = {{0}};
@@ -591,10 +603,17 @@ int main() {
         }
 
         // parse the input
-        userInputStruct userInput;
+        UserInputStruct userInput;
         while (1) {
             userInput = getuserInputFromString(inputString);
 
+            /*****************************************************************
+             *
+             * This validation logic should be looked at again to make sure
+             * it's clearing everything properly (i dont think it is from a
+             * quick sleep deprived glance)
+             *
+             * **************************************************************/
             // validate the input in the order it was created
             if (userInput.checkSum == NULL) {
                 fprintf(stderr, "Checksum allocation failed\n");
@@ -651,6 +670,12 @@ int main() {
 
         // execute the input
 
+        /*****************************************************************
+         *
+         * This should probably be handled better in its own function
+         * and not in main
+         *
+         * **************************************************************/
         if (strcmp(userInput.argv[0], "cd") == 0) {
             if (userInput.argv[1] == NULL) {
                 if (chdir(getenv("HOME")) != 0) {
@@ -666,7 +691,7 @@ int main() {
                     fflush(stderr);
                 }
             }
-        // command executed ok
+            // command executed ok
         } else if (strcmp(userInput.argv[0], "status") == 0) {
             if (WIFEXITED(currentStatus)) {
                 fprintf(stdout, "exit value %d\n", WEXITSTATUS(currentStatus));
@@ -692,7 +717,7 @@ int main() {
                 open(userInput.inputDestination_ptr, O_RDONLY, 0444);
             outputDestination = open(userInput.outputDestination_ptr,
                                      O_WRONLY | O_CREAT | O_TRUNC, 0666);
-            // Fork a new process
+            // fork a new process
             pid_t spawnPid = fork();
 
             if (spawnPid < 0) {
@@ -788,7 +813,7 @@ int main() {
 
                 execvp(userInput.argv[0], userInput.argv);
                 // exec only returns here if there is an error
-                fprintf(stdout,"Command not found or failed to execute\n");
+                fprintf(stdout, "Command not found or failed to execute\n");
                 fflush(stdout);
 
             } else {
