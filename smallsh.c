@@ -46,20 +46,15 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <sys/types.h>
-#include <sys/wait.h>
 #include <unistd.h>
 
 #ifndef UINT8_MAX
 #error "No support for uint8_t"
 #endif
-/*************************************************************************************************************************************
+/*******************************************************************************
  * Structures
  *
- *
- *
- *
- ************************************************************************************************************************************/
+ ******************************************************************************/
 struct UserInputStruct // struct to hold payload for command
 {
     char **argv; // must terminated with a NULL pointer for exec
@@ -76,10 +71,10 @@ int fgOnly = 0;
 int control_var = 1;
 int quit = 0;
 
-/*************************************************************************************************************************************
+/******************************************************************************
  * Signal handlers
  *
- ************************************************************************************************************************************/
+ ******************************************************************************/
 void handle_SIGCHLD(int signo, siginfo_t *siginfo, void *ucontext) {
     pid_t spawnpid;
     int status;
@@ -180,12 +175,12 @@ void handle_SIGQUIT(int signo, siginfo_t *siginfo, void *ucontext) {
     return;
 }
 
-/*************************************************************************************************************************************
+/*******************************************************************************
  * Functions
  *
- ************************************************************************************************************************************/
+ ******************************************************************************/
 
-/**********************************************************************************************
+/*******************************************************************************
  * getInputString
  *
  *  Description
@@ -197,7 +192,7 @@ void handle_SIGQUIT(int signo, siginfo_t *siginfo, void *ucontext) {
  *
  *  Outputs:
  *      Returns a char* on success. Returns null on failure.
- *********************************************************************************************/
+ ******************************************************************************/
 char *getInputString() {
     while (1) {
         char *userInputString = NULL;
@@ -332,7 +327,7 @@ char *getInputString() {
     }
 }
 
-/**********************************************************************************************
+/*******************************************************************************
  * parseToken()
  *
  * Inputs:
@@ -344,7 +339,7 @@ char *getInputString() {
  *  Allocates a pointer for, and sets the value of argc
  *  parses < , > , & out of the token array and builds the userInput struct
  *
- *********************************************************************************************/
+ ******************************************************************************/
 void parseToken(UserInputStruct userInput, char *token, size_t *argc) {
     // lets take a look at the token
     if (token == NULL) {
@@ -393,7 +388,7 @@ void parseToken(UserInputStruct userInput, char *token, size_t *argc) {
     }
 }
 
-/**********************************************************************************************
+/*******************************************************************************
  * getuserInputFromString()
  *
  * Inputs:
@@ -403,7 +398,7 @@ void parseToken(UserInputStruct userInput, char *token, size_t *argc) {
  *  Returns a UserInputStruct containing the necessary info to execute a
  *  command sent by the user.
  *
- *********************************************************************************************/
+ ******************************************************************************/
 UserInputStruct getuserInputFromString(char *userInputString) {
 
     char *defaultDestination = "/dev/null";
@@ -514,7 +509,7 @@ UserInputStruct getuserInputFromString(char *userInputString) {
     return userInput;
 }
 
-/**********************************************************************************************
+/*******************************************************************************
  * freeUserInput()
  *
  * Purpose: attempts to free up allocated memory within the UserInputStruct.
@@ -522,7 +517,7 @@ UserInputStruct getuserInputFromString(char *userInputString) {
  * Inputs:
  *  UserInputStruct userInput
  *
- *********************************************************************************************/
+ ******************************************************************************/
 void freeUserInput(UserInputStruct userInput) {
     size_t i = 0;
 
@@ -547,12 +542,12 @@ void freeUserInput(UserInputStruct userInput) {
     return;
 }
 
-/**********************************************************************************************
+/*******************************************************************************
  * main()
  *
- * 
  *
- *********************************************************************************************/
+ *
+ ******************************************************************************/
 int main() {
     if (control_var) {
         fprintf(stdout,
@@ -563,7 +558,7 @@ int main() {
         control_var = 0;
     }
 
-    //main execution loop
+    // main execution loop
     while (!quit) {
         // register event handlers
         struct sigaction SIGINT_action = {{0}};
