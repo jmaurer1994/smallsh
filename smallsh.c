@@ -196,6 +196,12 @@ char *getInputString()
         fflush(stdout);
 
         fflush(stdin);
+        /*****************************************************************
+         *
+         * This allocation is causing a memory leak when execvp fails to
+         * execute I can't quit fix yet.
+         *
+         * **************************************************************/
         ssize_t nRead = getline(&temp_str, &userInputStringLength, stdin);
         fflush(stdin);
         if(temp_str == NULL){
