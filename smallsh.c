@@ -27,6 +27,11 @@
  *
  *  command [arg1 arg2 ...] [< input_file] [> output_file] [&]
  *
+ * Instructions:
+ *
+ * Compile with
+ *  gcc -std=c99 -Wall -g -o smallsh smallsh.c -lm
+ *
  */
 
 #define _GNU_SOURCE
@@ -42,7 +47,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/types.h>
-#include <sys/wait.h> 
+#include <sys/wait.h>
 #include <unistd.h>
 
 #ifndef UINT8_MAX
@@ -73,9 +78,6 @@ int quit = 0;
 
 /*************************************************************************************************************************************
  * Signal handlers
- *
- *
- *
  *
  ************************************************************************************************************************************/
 void handle_SIGCHLD(int signo, siginfo_t *siginfo, void *ucontext) {
@@ -180,11 +182,6 @@ void handle_SIGQUIT(int signo, siginfo_t *siginfo, void *ucontext) {
 
 /*************************************************************************************************************************************
  * Functions
- *
- *
- *
- *
- *
  *
  ************************************************************************************************************************************/
 
@@ -492,7 +489,6 @@ userInputStruct getuserInputFromString(char *userInputString) {
             token = strtok(NULL, " ");
         }
 
-        // no $$ expansion performed
         userInput.argv[i] =
             calloc(strlen(token) + 1,
                    sizeof(char)); // extra space for null terminator, use calloc
@@ -558,7 +554,6 @@ int main() {
 
     while (!quit) {
         // register event handlers
-
         struct sigaction SIGINT_action = {{0}};
         sigemptyset(&SIGINT_action.sa_mask);
         SIGINT_action.sa_handler = SIG_IGN;
