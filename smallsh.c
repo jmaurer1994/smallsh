@@ -31,7 +31,7 @@ int quit = 0;
  *
  *
  ************************************************************************************************************************************/
-struct UserInputStruct // struct to hold payload for command
+struct userInputStringStruct // struct to hold payload for command
 {
     char **argv; // must terminated with a NULL pointer for exec
     char *inputDestination_ptr;
@@ -39,7 +39,7 @@ struct UserInputStruct // struct to hold payload for command
     int *runInBackground;
     int *checkSum;
 };
-typedef struct UserInputStruct UserInputStruct;
+typedef struct userInputStringStruct userInputStringStruct;
 
 /*************************************************************************************************************************************
  * Signal handlers
@@ -184,19 +184,24 @@ void handle_SIGQUIT(int signo, siginfo_t *siginfo, void *ucontext)
  *********************************************************************************************/
 char *getInputString()
 {
+
     while (1)
     {
-        char *userInput = NULL;
-        char *temp_str = NULL;
+        char *userInputString = NULL;
         char *expansion_str = NULL;
-        size_t userInputLength = 0;
+        size_t userInputStringLength = 0;
+        char *temp_str = NULL;
 
         fprintf(stdout, ": ");
         fflush(stdout);
 
         fflush(stdin);
-        ssize_t nRead = getline(&temp_str, &userInputLength, stdin);
+        ssize_t nRead = getline(&temp_str, &userInputStringLength, stdin);
         fflush(stdin);
+        if(temp_str == NULL){
+            raise(SIGUSR1);
+            return NULL;
+        }
 
         // await user input
         if (nRead > 1)
@@ -211,6 +216,7 @@ char *getInputString()
             //begone \n 
             temp_str[nRead - (size_t)(1)] = '\0';    
 
+            //handle $$ expansion
             char *moneyPtr = strstr(temp_str, "$$");
             if (moneyPtr != NULL)
             {
@@ -257,7 +263,7 @@ char *getInputString()
                 {
                     free(temp_str);
                     raise(SIGUSR1);
-                    return userInput;
+                    return userInputString;
                 }
 
                 size_t offset = 0;
@@ -297,23 +303,22 @@ char *getInputString()
             }
 
             // attempt to allocate space for input string
-            userInput = calloc(strlen(temp_str) + 1, sizeof(char)); 
-            if (userInput == NULL)
+            userInputString = calloc(strlen(temp_str) + 1, sizeof(char)); 
+            if (userInputString == NULL)
             {
-                free(temp_str);
+                free(userInputString);
                 raise(SIGUSR1);
                 return NULL;
             }
 
-            strcpy(userInput, temp_str);
+            strcpy(userInputString, temp_str);
             free(temp_str);
 
-            return userInput;
+            return userInputString;
         }
         else if (nRead < 1)
         {
-
-            free(temp_str);
+            free(userInputString);
             clearerr(stdin);
             return NULL;
         }
@@ -330,16 +335,16 @@ char *getInputString()
  * parseToken()
  *
  * Inputs:
- *  UserInputStruct userInput
+ *  userInputStringStruct userInputString
  *  char* token
  *  size_t* argc
  *
  * Outputs:
  * sets argc to number of arguments parsed
- * parses < , > , & out of the token array and builds the userInput struct
+ * parses < , > , & out of the token array and builds the userInputString struct
  *
  *********************************************************************************************/
-void parseToken(UserInputStruct userInput, char *token, size_t *argc)
+void parseToken(userInputStringStruct userInputString, char *token, size_t *argc)
 {
     // lets take a look at the token
     if (token == NULL)
@@ -353,22 +358,22 @@ void parseToken(UserInputStruct userInput, char *token, size_t *argc)
         // get next token and set input destination
         token = strtok(NULL, " ");
 
-        strcpy(userInput.inputDestination_ptr, token);
+        strcpy(userInputString.inputDestination_ptr, token);
 
         // get next token and recurse
         token = strtok(NULL, " ");
-        parseToken(userInput, token, argc);
+        parseToken(userInputString, token, argc);
     }
     else if (strcmp(token, ">") == 0)
     {
         // get next token and set output destination
         token = strtok(NULL, " ");
 
-        strcpy(userInput.outputDestination_ptr, token);
+        strcpy(userInputString.outputDestination_ptr, token);
 
         // get next token and recurse
         token = strtok(NULL, " ");
-        parseToken(userInput, token, argc);
+        parseToken(userInputString, token, argc);
     }
     else if (strcmp(token, "&") == 0)
     {
@@ -379,14 +384,14 @@ void parseToken(UserInputStruct userInput, char *token, size_t *argc)
             // User would like to run in background
             if (!fgOnly)
             {
-                *userInput.runInBackground = 1;
+                *userInputString.runInBackground = 1;
             }
         }
         else
         {
             // if the next token still contains text, ignore it and continue parsing the line
 
-            parseToken(userInput, token, argc);
+            parseToken(userInputString, token, argc);
         }
     }
     else
@@ -397,83 +402,83 @@ void parseToken(UserInputStruct userInput, char *token, size_t *argc)
 
         // get next token and recurse
         token = strtok(NULL, " ");
-        parseToken(userInput, token, argc);
+        parseToken(userInputString, token, argc);
     }
 }
 
 /**********************************************************************************************
- * getUserInputFromString()
+ * getuserInputStringFromString()
  *
  * Inputs:
- *  char* userInputString
+ *  char* userInputStringString
  *
  * Outputs:
- *  Returns a UserInputStruct containing the necessary info to execute a command sent by the user
+ *  Returns a userInputStringStruct containing the necessary info to execute a command sent by the user
  *
  *********************************************************************************************/
-UserInputStruct getUserInputFromString(char *userInputString)
+userInputStringStruct getuserInputStringFromString(char *userInputStringString)
 {
 
     char *defaultDestination = "/dev/null";
 
     // initialize the struct
-    UserInputStruct userInput;
-    userInput.argv = NULL;
-    userInput.inputDestination_ptr = NULL;
-    userInput.outputDestination_ptr = NULL;
-    userInput.runInBackground = NULL;
+    userInputStringStruct userInputString;
+    userInputString.argv = NULL;
+    userInputString.inputDestination_ptr = NULL;
+    userInputString.outputDestination_ptr = NULL;
+    userInputString.runInBackground = NULL;
 
-    userInput.checkSum = malloc(sizeof(int));
+    userInputString.checkSum = malloc(sizeof(int));
     // check to see if checksum allocated
-    if (userInput.checkSum == NULL)
+    if (userInputString.checkSum == NULL)
     {
         raise(SIGUSR1);
-        return userInput;
+        return userInputString;
     }
     else
     {
-        *userInput.checkSum = 0;
+        *userInputString.checkSum = 0;
     }
 
     // attempt our first allocations
-    userInput.inputDestination_ptr = calloc(strlen(defaultDestination) + (size_t)1, (size_t)1);
-    if (userInput.inputDestination_ptr == NULL)
+    userInputString.inputDestination_ptr = calloc(strlen(defaultDestination) + (size_t)1, (size_t)1);
+    if (userInputString.inputDestination_ptr == NULL)
     {
         raise(SIGUSR1);
-        return userInput;
+        return userInputString;
     }
 
-    userInput.outputDestination_ptr = calloc(strlen(defaultDestination) + (size_t)1, (size_t)1);
-    if (userInput.outputDestination_ptr == NULL)
+    userInputString.outputDestination_ptr = calloc(strlen(defaultDestination) + (size_t)1, (size_t)1);
+    if (userInputString.outputDestination_ptr == NULL)
     {
         raise(SIGUSR1);
-        return userInput;
+        return userInputString;
     }
 
-    userInput.runInBackground = malloc(sizeof(int));
-    if (userInput.runInBackground == NULL)
+    userInputString.runInBackground = malloc(sizeof(int));
+    if (userInputString.runInBackground == NULL)
     {
         raise(SIGUSR1);
-        return userInput;
+        return userInputString;
     }
 
-    strcpy(userInput.inputDestination_ptr, defaultDestination);
-    strcpy(userInput.outputDestination_ptr, defaultDestination);
+    strcpy(userInputString.inputDestination_ptr, defaultDestination);
+    strcpy(userInputString.outputDestination_ptr, defaultDestination);
 
-    *userInput.runInBackground = 0;
+    *userInputString.runInBackground = 0;
 
     // let's build the arg array
-    userInput.argv = NULL;
+    userInputString.argv = NULL;
 
     // allocate a second string to hold a copy of the input... for reasons...
-    char *inputString = calloc(strlen(userInputString) + 1, sizeof(char));
+    char *inputString = calloc(strlen(userInputStringString) + 1, sizeof(char));
     if (inputString == NULL)
     {
         raise(SIGUSR1);
-        return userInput;
+        return userInputString;
     }
 
-    strcpy(inputString, userInputString);
+    strcpy(inputString, userInputStringString);
 
     char *token;
     size_t argc = 0;
@@ -482,16 +487,16 @@ UserInputStruct getUserInputFromString(char *userInputString)
     // check to see that we got a non-empty token
     if (token != NULL)
     {
-        parseToken(userInput, token, &argc);
+        parseToken(userInputString, token, &argc);
     }
 
     free(inputString);
 
-    userInput.argv = malloc((argc + (size_t)1) * (size_t)sizeof(char *)); // extra item for NULL pointer so we know we've hit the end of the array
-    if (userInput.argv == NULL)
+    userInputString.argv = malloc((argc + (size_t)1) * (size_t)sizeof(char *)); // extra item for NULL pointer so we know we've hit the end of the array
+    if (userInputString.argv == NULL)
     {
         raise(SIGUSR1);
-        return userInput;
+        return userInputString;
     }
 
     // loop through the string again to get the args:
@@ -501,7 +506,7 @@ UserInputStruct getUserInputFromString(char *userInputString)
         if (i == 0)
         {
             // first time through the loop
-            token = strtok(userInputString, " ");
+            token = strtok(userInputStringString, " ");
         }
         else
         {
@@ -509,45 +514,45 @@ UserInputStruct getUserInputFromString(char *userInputString)
         }
 
         // no $$ expansion performed
-        userInput.argv[i] = calloc(strlen(token) + 1, sizeof(char)); // extra space for null terminator, use calloc so that memory space is initialized to \0
-        if (userInput.argv[i] == NULL)
+        userInputString.argv[i] = calloc(strlen(token) + 1, sizeof(char)); // extra space for null terminator, use calloc so that memory space is initialized to \0
+        if (userInputString.argv[i] == NULL)
         {
             raise(SIGUSR1);
-            return userInput;
+            return userInputString;
         }
 
         // add the token to the array
-        strcpy(userInput.argv[i], token);
+        strcpy(userInputString.argv[i], token);
     }
 
     // done processing args, append null pointer
-    userInput.argv[argc] = (void *)NULL;
+    userInputString.argv[argc] = (void *)NULL;
 
     // we made it through without returning early.
-    *userInput.checkSum = 1;
+    *userInputString.checkSum = 1;
 
-    return userInput;
+    return userInputString;
 }
 
 /**********************************************************************************************
- * freeUserInput()
+ * freeuserInputString()
  *
  * Purpose: attempts to free up allocated memory.
  *
  * Inputs:
- *  UserInputStruct userInput
+ *  userInputStringStruct userInputString
  *
  *********************************************************************************************/
-void freeUserInput(UserInputStruct userInput)
+void freeuserInputString(userInputStringStruct userInputString)
 {
     size_t i = 0;
 
     // free the argv contents
     while (1)
     {
-        if (userInput.argv[i] != NULL)
+        if (userInputString.argv[i] != NULL)
         {
-            free(userInput.argv[i]);
+            free(userInputString.argv[i]);
             i++;
         }
         else
@@ -557,13 +562,13 @@ void freeUserInput(UserInputStruct userInput)
     }
 
     // free argv itself
-    free(userInput.argv);
+    free(userInputString.argv);
 
     // free the others
-    free(userInput.inputDestination_ptr);
-    free(userInput.outputDestination_ptr);
-    free(userInput.runInBackground);
-    free(userInput.checkSum);
+    free(userInputString.inputDestination_ptr);
+    free(userInputString.outputDestination_ptr);
+    free(userInputString.runInBackground);
+    free(userInputString.checkSum);
     return;
 }
 
@@ -605,63 +610,67 @@ int main()
 
         // Get input from the user
         char *inputString = NULL;
+        char *temp_str = NULL;
+        while(1){
+            inputString = getInputString(&temp_str);
 
-        inputString = getInputString();
-        if (inputString == NULL)
-        {
-            continue;
+            if(inputString == NULL){
+                continue;
+            } else {
+                break;
+            }
         }
 
         // parse the input
-        UserInputStruct userInput;
+        userInputStringStruct userInputString;
         while (1)
         {
-            userInput = getUserInputFromString(inputString);
+            userInputString = getuserInputStringFromString(inputString);
 
             // validate the input in the order it was created
-            if (userInput.checkSum == NULL)
+            if (userInputString.checkSum == NULL)
             {
                 fprintf(stderr, "Checksum allocation failed\n");
                 fflush(NULL);
             }
-            else if (userInput.checkSum == 0)
+            else if (userInputString.checkSum == 0)
             {
                 fprintf(stderr, "Input allocation failed ");
-                if (userInput.inputDestination_ptr == NULL)
+                if (userInputString.inputDestination_ptr == NULL)
                 {
                     fprintf(stderr, "...during input destination allocation\n");
                     fflush(NULL);
                 }
-                else if (userInput.outputDestination_ptr == NULL)
+                else if (userInputString.outputDestination_ptr == NULL)
                 {
                     fprintf(stderr, "...during output destination allocation\n");
                     fflush(NULL);
                 }
-                else if (userInput.runInBackground == NULL)
+                else if (userInputString.runInBackground == NULL)
                 {
                     fprintf(stderr, "...background boolean allocation\n");
                     fflush(NULL);
                 }
-                else if (userInput.argv == NULL)
+                else if (userInputString.argv == NULL)
                 {
                     fprintf(stderr, "...during pointer array allocation\n");
                     fflush(NULL);
                 }
                 else
                 {
-                    free(userInput.checkSum);
-                    free(userInput.inputDestination_ptr);
-                    free(userInput.outputDestination_ptr);
-                    free(userInput.runInBackground);
+                    free(userInputString.checkSum);
+                    free(userInputString.inputDestination_ptr);
+                    free(userInputString.outputDestination_ptr);
+                    free(userInputString.runInBackground);
 
                     // check arguements.
                     size_t i = 0;
                     // free the argv contents
                     while (1)
                     {
-                        if (userInput.argv[i] != NULL)
+                        if (userInputString.argv[i] != NULL)
                         {
-                            free(userInput.argv[i]);
+                            free(userInputString.argv[i]);
                             i++;
                         }
                         else
@@ -670,7 +679,7 @@ int main()
                         }
                     }
 
-                    free(userInput.argv);
+                    free(userInputString.argv);
                     fprintf(stderr, "...during an argument allocation\n Read %zu args successfully before error.", i);
                     fflush(NULL);
                 }
@@ -685,9 +694,9 @@ int main()
 
         // execute the input
 
-        if (strcmp(userInput.argv[0], "cd") == 0)
+        if (strcmp(userInputString.argv[0], "cd") == 0)
         {
-            if (userInput.argv[1] == NULL)
+            if (userInputString.argv[1] == NULL)
             {
                 if (chdir(getenv("HOME")) != 0)
                 {
@@ -696,14 +705,14 @@ int main()
             }
             else
             {
-                if (chdir(userInput.argv[1]) != 0)
+                if (chdir(userInputString.argv[1]) != 0)
                 {
                     fprintf(stdout, "Directory not found, please try again.\n");
                 }
             }
             // command executed ok
         }
-        else if (strcmp(userInput.argv[0], "status") == 0)
+        else if (strcmp(userInputString.argv[0], "status") == 0)
         {
             if (WIFEXITED(currentStatus))
             {
@@ -716,7 +725,7 @@ int main()
 
             fflush(stdout);
         }
-        else if (strcmp(userInput.argv[0], "exit") == 0 || strcmp(userInput.argv[0], "quit") == 0)
+        else if (strcmp(userInputString.argv[0], "exit") == 0 || strcmp(userInputString.argv[0], "quit") == 0)
         {
             raise(SIGQUIT);
         }
@@ -728,15 +737,15 @@ int main()
             int outputDestination;
 
             // open redirection destinations
-            inputDestination = open(userInput.inputDestination_ptr, O_RDONLY, 0444);
-            outputDestination = open(userInput.outputDestination_ptr, O_WRONLY | O_CREAT | O_TRUNC, 0666);
+            inputDestination = open(userInputString.inputDestination_ptr, O_RDONLY, 0444);
+            outputDestination = open(userInputString.outputDestination_ptr, O_WRONLY | O_CREAT | O_TRUNC, 0666);
             // Fork a new process
             pid_t spawnPid = fork();
 
             if (spawnPid < 0)
             {
                 fprintf(stderr, "fork(): ");
-                freeUserInput(userInput);
+                freeuserInputString(userInputString);
                 close(inputDestination);
                 close(outputDestination);
                 exit(1);
@@ -779,17 +788,17 @@ int main()
                 if (inputDestination < 0)
                 {
                     fprintf(stdout, "Can not open file for input\n");
-                    freeUserInput(userInput);
+                    freeuserInputString(userInputString);
                     exit(2);
                 }
                 if (outputDestination < 0)
                 {
                     fprintf(stdout, "Can not open file for output\n");
-                    freeUserInput(userInput);
+                    freeuserInputString(userInputString);
                     exit(2);
                 }
 
-                if (*userInput.runInBackground)
+                if (*userInputString.runInBackground)
                 {
                     /**********************************
                      * BACKGROUND CHILD
@@ -807,11 +816,11 @@ int main()
                      * FOREGROUND CHILD
                      *********************************/
                     // only redirect if the user chooses to
-                    if (strcmp(userInput.inputDestination_ptr, "/dev/null") != 0)
+                    if (strcmp(userInputString.inputDestination_ptr, "/dev/null") != 0)
                     {
                         dup2(inputDestination, 0);
                     }
-                    if (strcmp(userInput.outputDestination_ptr, "/dev/null") != 0)
+                    if (strcmp(userInputString.outputDestination_ptr, "/dev/null") != 0)
                     {
                         dup2(outputDestination, 1);
                     }
@@ -824,10 +833,10 @@ int main()
                 sigaction(SIGUSR1, &SIGUSR1_action_child, NULL);
                 sigaction(SIGQUIT, &SIGQUIT_action_child, NULL);
 
-                execvp(userInput.argv[0], userInput.argv);
+                execvp(userInputString.argv[0], userInputString.argv);
                 // exec only returns here if there is an error
                 perror("execvp");
-                freeUserInput(userInput);
+                freeuserInputString(userInputString);
                 exit(2);
             }
             else
@@ -841,7 +850,7 @@ int main()
                 SIGCHLD_action.sa_flags = SA_SIGINFO;
                 sigaction(SIGCHLD, &SIGCHLD_action, NULL);
 
-                if (*userInput.runInBackground)
+                if (*userInputString.runInBackground)
                 {
 
                     fprintf(stdout, "Background process PID:(%d)\n", spawnPid);
@@ -875,7 +884,7 @@ int main()
             close(outputDestination);
         }
 
-        freeUserInput(userInput);
+        freeuserInputString(userInputString);
     }
 
     struct sigaction temp_action = {{0}};
