@@ -143,7 +143,7 @@ void handle_SIGCHLD(int signo, siginfo_t *siginfo, void *ucontext) {
 
         if (WIFEXITED(status)) {
             char *message4 = "\n";
-            write(STDOUT_FILENO, message4, 3);
+            write(STDOUT_FILENO, message4, 2);
         } else {
             char *message4 = "\n";
             write(STDOUT_FILENO, message4, 1);
@@ -157,21 +157,21 @@ void handle_SIGTSTP(int signo, siginfo_t *siginfo, void *ucontext) {
 
     if (fgOnly) {
         char *message = "\nNow entering foreground only mode\n";
-        write(STDOUT_FILENO, message, 37);
-        fflush(NULL);
-    } else {
-        char *message = "\nNow Leaving foreground only mode\n";
         write(STDOUT_FILENO, message, 36);
-        fflush(NULL);
+        fflush(stdout);
+    } else {
+        char *message = "\nNow leaving foreground only mode\n";
+        write(STDOUT_FILENO, message, 35);
+        fflush(stdout);
     }
 }
 
 void handle_SIGUSR1(int signo, siginfo_t *siginfo, void *ucontext) {
 
-    char *message = "\nSmallsh encountered an error during memory "
-                    "allocation\nAttemping to recover...\n: ";
-    write(STDOUT_FILENO, message, 81);
-    fflush(NULL);
+    char *message =
+        "\nSmallsh encountered an error\nAttemping to recover...\n: ";
+    write(STDOUT_FILENO, message, 56);
+    fflush(stdout);
     return;
 }
 
@@ -204,12 +204,12 @@ char *getInputString() {
         fflush(stdout);
 
         fflush(stdin);
-        /*****************************************************************
-         *
-         * This allocation is causing a memory leak when execvp fails to
-         * execute I can't quit fix yet.
-         *
-         * **************************************************************/
+/*****************************************************************
+ *
+ * This allocation is causing a memory leak when execvp fails to
+ * execute I can't quit fix yet.
+ *
+ * **************************************************************/
         ssize_t nRead = getline(&temp_str, &userInputStringLength, stdin);
         fflush(stdin);
         if (temp_str == NULL) {
@@ -346,7 +346,6 @@ void parseToken(userInputStruct userInput, char *token, size_t *argc) {
         return;
     }
 
-    // fprintf(stderr, "Got token: %s\n", token);
     if (strcmp(token, "<") == 0) {
         // get next token and set input destination
         token = strtok(NULL, " ");
@@ -380,7 +379,6 @@ void parseToken(userInputStruct userInput, char *token, size_t *argc) {
             parseToken(userInput, token, argc);
         }
     } else {
-        // fprintf(stderr, "Found arg, argc: %zu\n", *argc);
         //  item is command or arg, count it
         *argc = *argc + (size_t)1;
 
@@ -546,9 +544,11 @@ void freeUserInput(userInputStruct userInput) {
 
 int main() {
     if (control_var) {
-        printf("\nWelcome to smallsh\nPress ctrl^c to interrupt a process, "
-               "ctrl^z to toggle foreground-only mode, or ctrl^\\ to "
-               "quit.\n");
+        fprintf(stdout,
+                "\nWelcome to smallsh\nPress ctrl^c to interrupt a process, "
+                "ctrl^z to toggle foreground-only mode, or ctrl^\\ to "
+                "quit.\n");
+        fflush(stdout);
         control_var = 0;
     }
 
@@ -598,24 +598,24 @@ int main() {
             // validate the input in the order it was created
             if (userInput.checkSum == NULL) {
                 fprintf(stderr, "Checksum allocation failed\n");
-                fflush(NULL);
+                fflush(stderr);
             } else if (userInput.checkSum == 0) {
                 fprintf(stderr, "Input allocation failed ");
                 if (userInput.inputDestination_ptr == NULL) {
                     fprintf(stderr, "...during input destination "
                                     "allocation\n");
-                    fflush(NULL);
+                    fflush(stderr);
                 } else if (userInput.outputDestination_ptr == NULL) {
                     fprintf(stderr, "...during output destination "
                                     "allocation\n");
-                    fflush(NULL);
+                    fflush(stderr);
                 } else if (userInput.runInBackground == NULL) {
                     fprintf(stderr, "...background boolean allocation\n");
-                    fflush(NULL);
+                    fflush(stderr);
                 } else if (userInput.argv == NULL) {
                     fprintf(stderr, "...during pointer array "
                                     "allocation\n");
-                    fflush(NULL);
+                    fflush(stderr);
                 } else {
                     free(userInput.checkSum);
                     free(userInput.inputDestination_ptr);
@@ -640,7 +640,7 @@ int main() {
                             "allocation\n Read %zu args "
                             "successfully before error.",
                             i);
-                    fflush(NULL);
+                    fflush(stderr);
                 }
             } else {
                 break;
@@ -654,23 +654,27 @@ int main() {
         if (strcmp(userInput.argv[0], "cd") == 0) {
             if (userInput.argv[1] == NULL) {
                 if (chdir(getenv("HOME")) != 0) {
-                    fprintf(stdout, "Encountered an error "
+                    fprintf(stderr, "Encountered an error "
                                     "while attempting to "
                                     "open home directory.\n");
+                    fflush(stderr);
                 }
             } else {
                 if (chdir(userInput.argv[1]) != 0) {
-                    fprintf(stdout, "Directory not found, "
+                    fprintf(stderr, "Directory not found, "
                                     "please try again.\n");
+                    fflush(stderr);
                 }
             }
-            // command executed ok
+        // command executed ok
         } else if (strcmp(userInput.argv[0], "status") == 0) {
             if (WIFEXITED(currentStatus)) {
                 fprintf(stdout, "exit value %d\n", WEXITSTATUS(currentStatus));
+                fflush(stdout);
             } else if (WIFSIGNALED(currentStatus)) {
                 fprintf(stdout, "terminated by signal %d\n",
                         WTERMSIG(currentStatus));
+                fflush(stdout);
             }
 
             fflush(stdout);
@@ -693,10 +697,11 @@ int main() {
 
             if (spawnPid < 0) {
                 fprintf(stderr, "fork(): ");
+                fflush(stderr);
                 freeUserInput(userInput);
                 close(inputDestination);
                 close(outputDestination);
-                exit(1);
+                exit(2);
             } else if (spawnPid == 0) {
                 /**********************************
                  * CHILD PROCESS
@@ -733,12 +738,17 @@ int main() {
                 // check to see if files opened, kill the child if
                 // it failed
                 if (inputDestination < 0) {
-                    fprintf(stdout, "Can not open file for input\n");
+                    fprintf(stderr,
+                            "Can not open file for input redirection\n");
+                    fflush(stderr);
                     freeUserInput(userInput);
                     exit(2);
                 }
                 if (outputDestination < 0) {
-                    fprintf(stdout, "Can not open file for output\n");
+                    fprintf(stderr,
+                            "Can not open file for output redirection\n");
+                    fflush(stderr);
+                    close(inputDestination);
                     freeUserInput(userInput);
                     exit(2);
                 }
@@ -778,7 +788,9 @@ int main() {
 
                 execvp(userInput.argv[0], userInput.argv);
                 // exec only returns here if there is an error
-                perror("execvp");
+                fprintf(stdout,"Command not found or failed to execute\n");
+                fflush(stdout);
+
             } else {
                 /**********************************
                  * PARENT PROCESS
@@ -840,10 +852,13 @@ int main() {
                     "\nBackground process (%d) is done: terminated "
                     "by signal %d",
                     pid, WTERMSIG(childStatus));
+
+            fflush(stdout);
         }
         pid = wait(&childStatus);
     }
 
     fprintf(stdout, "\n\nThank you for using smallsh\n");
+    fflush(stdout);
     sigprocmask(SIG_UNBLOCK, &temp_action.sa_mask, NULL);
 }
