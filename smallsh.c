@@ -21,6 +21,8 @@
 // do not look at these
 int currentStatus = 0;
 int fgOnly = 0;
+int control_var = 1;
+int quit = 0;
 
 /*************************************************************************************************************************************
  * Structures
@@ -119,7 +121,7 @@ void handle_SIGCHLD(int signo, siginfo_t *siginfo, void *ucontext)
 
         if (WIFEXITED(status))
         {
-            char *message4 = "\n: ";
+            char *message4 = "\n";
             write(STDOUT_FILENO, message4, 3);
         }
         else
@@ -137,13 +139,13 @@ void handle_SIGTSTP(int signo, siginfo_t *siginfo, void *ucontext)
 
     if (fgOnly)
     {
-        char *message = "\nNow entering foreground only mode\n: ";
+        char *message = "\nNow entering foreground only mode\n";
         write(STDOUT_FILENO, message, 37);
         fflush(NULL);
     }
     else
     {
-        char *message = "\nNow Leaving foreground only mode\n: ";
+        char *message = "\nNow Leaving foreground only mode\n";
         write(STDOUT_FILENO, message, 36);
         fflush(NULL);
     }
@@ -155,6 +157,12 @@ void handle_SIGUSR1(int signo, siginfo_t *siginfo, void *ucontext)
     char *message = "\nSmallsh encountered an error during memory allocation\nAttemping to recover...\n: ";
     write(STDOUT_FILENO, message, 81);
     fflush(NULL);
+    return;
+}
+
+void handle_SIGQUIT(int signo, siginfo_t *siginfo, void *ucontext)
+{
+    quit = 1;
     return;
 }
 
@@ -179,47 +187,140 @@ char *getInputString()
     while (1)
     {
         char *userInput = NULL;
-        char *tempStr = NULL;
+        char *temp_str = NULL;
+        char *expansion_str = NULL;
         size_t userInputLength = 0;
 
         fprintf(stdout, ": ");
         fflush(stdout);
 
-        ssize_t nRead = getline(&tempStr, &userInputLength, stdin);
+        fflush(stdin);
+        ssize_t nRead = getline(&temp_str, &userInputLength, stdin);
+        fflush(stdin);
 
         // await user input
         if (nRead > 1)
         {
             // successfully read
-            if (tempStr[0] == '#')
+            if (temp_str[0] == '#')
             {
                 // ignore comment
                 continue;
             }
 
-            // chop off the newline character
-            tempStr[nRead - (size_t)(1)] = '\0';
+            //begone \n 
+            temp_str[nRead - (size_t)(1)] = '\0';    
+
+            char *moneyPtr = strstr(temp_str, "$$");
+            if (moneyPtr != NULL)
+            {
+                // find how many times we're expanding $$
+                int numOccurences = 0;
+                for (size_t i = 0; i < strlen(temp_str); i++)
+                {
+                    if (temp_str[i] == '$')
+                    {
+                        if (temp_str[i + (size_t)1] == '$')
+                        {
+                            numOccurences++;
+
+                            i = i + 1; // consume the second $
+                        }
+                    }
+                }
+
+                // do some math to calc new token size
+                size_t byteCount = 0;
+                pid_t pid = getpid();
+                size_t nDigits = floor(log10(abs(pid))) + 1;
+
+                byteCount = (strlen(temp_str) - (2 * numOccurences)) + (nDigits * numOccurences) + 1;
+                //(strlen - 2*numoccurences) - string length of original tokens minus however many $ we're removing
+                //(nDigits * numOccurences) - digits of the pid * how many times we're inserting it
+                //+1 for null terminator
+
+                // convert the pid to a char[]
+                char pidChar[nDigits];
+                int digit = 0;
+                size_t count = 1;
+                while (pid > 0)
+                {
+                    digit = pid % 10;
+                    pid = pid / 10;
+                    pidChar[nDigits - count] = (char)(digit + 48);
+                    count++;
+                }
+
+                // allocate some space
+                expansion_str = calloc(byteCount, sizeof(char));
+                if (expansion_str == NULL)
+                {
+                    free(temp_str);
+                    raise(SIGUSR1);
+                    return userInput;
+                }
+
+                size_t offset = 0;
+                // build the new token
+                for (size_t h = 0; h < strlen(temp_str); h++)
+                {
+                    if (temp_str[h] == '$')
+                    {
+                        if (temp_str[h + (size_t)1] == '$')
+                        {
+                            // add the pid to the arr
+                            for (size_t j = 0; j < nDigits; j++)
+                            {
+                                expansion_str[h + j + offset] = pidChar[j];
+                            }
+
+                            offset = offset + nDigits - 2;
+                            h = h + 1;
+                        }
+                        else
+                        {
+                            expansion_str[h + offset] = '$';
+                        }
+                    }
+                    else
+                    {
+                        expansion_str[h + offset] = temp_str[h];
+                    }
+                }
+            }
+
+            if (expansion_str != NULL)
+            {
+                // expansion perfomed
+                free(temp_str);
+                temp_str = expansion_str;
+            }
 
             // attempt to allocate space for input string
-            userInput = calloc(nRead, sizeof(char)); // no +1 since we got rid of the last character
+            userInput = calloc(strlen(temp_str) + 1, sizeof(char)); 
             if (userInput == NULL)
             {
+                free(temp_str);
                 raise(SIGUSR1);
                 return NULL;
             }
 
-            strcpy(userInput, tempStr);
-            free(tempStr);
+            strcpy(userInput, temp_str);
+            free(temp_str);
 
             return userInput;
         }
         else if (nRead < 1)
         {
-            fprintf(stdout, "getLine encountered an error\n");
+
+            free(temp_str);
+            clearerr(stdin);
             return NULL;
         }
         else
         {
+
+            free(temp_str);
             // user entered nothing, reprompt
         }
     }
@@ -324,7 +425,7 @@ UserInputStruct getUserInputFromString(char *userInputString)
 
     userInput.checkSum = malloc(sizeof(int));
     // check to see if checksum allocated
-    if(userInput.checkSum == NULL)
+    if (userInput.checkSum == NULL)
     {
         raise(SIGUSR1);
         return userInput;
@@ -375,7 +476,6 @@ UserInputStruct getUserInputFromString(char *userInputString)
     strcpy(inputString, userInputString);
 
     char *token;
-    char *new_token = NULL;
     size_t argc = 0;
     token = strtok(inputString, " ");
 
@@ -408,101 +508,16 @@ UserInputStruct getUserInputFromString(char *userInputString)
             token = strtok(NULL, " ");
         }
 
-        char *moneyPtr = strstr(token, "$$");
-        if (moneyPtr != NULL)
+        // no $$ expansion performed
+        userInput.argv[i] = calloc(strlen(token) + 1, sizeof(char)); // extra space for null terminator, use calloc so that memory space is initialized to \0
+        if (userInput.argv[i] == NULL)
         {
-            // find how many times we're expanding $$
-            int numOccurences = 0;
-            for (size_t i = 0; i < strlen(token); i++)
-            {
-                if (token[i] == '$')
-                {
-                    if (token[i + (size_t)1] == '$')
-                    {
-                        numOccurences++;
-
-                        i = i + 1; // consume the second $
-                    }
-                }
-            }
-
-            // do some math to calc new token size
-            size_t byteCount = 0;
-            pid_t pid = getpid();
-            size_t nDigits = floor(log10(abs(pid))) + 1;
-
-            byteCount = (strlen(token) - (2 * numOccurences)) + (nDigits * numOccurences) + 1;
-            //(strlen - 2*numoccurences) - string length of original tokens minus however many $ we're removing
-            //(nDigits * numOccurences) - digits of the pid * how many times we're inserting it
-            //+1 for null terminator
-
-            // convert the pid to a char[]
-            char pidChar[nDigits];
-            int digit = 0;
-            size_t count = 1;
-            while (pid > 0)
-            {
-                digit = pid % 10;
-                pid = pid / 10;
-                pidChar[nDigits - count] = (char)(digit + 48);
-                count++;
-            }
-
-            // allocate some space
-            new_token = calloc(byteCount, sizeof(char));
-            if (new_token == NULL)
-            {
-                raise(SIGUSR1);
-                return userInput;
-            }
-
-            size_t offset = 0;
-            // build the new token
-            for (size_t h = 0; h < strlen(token); h++)
-            {
-                if (token[h] == '$')
-                {
-                    if (token[h + (size_t)1] == '$')
-                    {
-                        // add the pid to the arr
-                        for (size_t j = 0; j < nDigits; j++)
-                        {
-                            new_token[h + j + offset] = pidChar[j];
-                        }
-
-                        offset = offset + nDigits - 2;
-                        h = h + 1;
-                    }
-                    else
-                    {
-                        new_token[h + offset] = '$';
-                    }
-                }
-                else
-                {
-                    new_token[h + offset] = token[h];
-                }
-            }
+            raise(SIGUSR1);
+            return userInput;
         }
 
-        if (new_token != NULL)
-        {
-            // expansion perfomed
-            userInput.argv[i] = new_token;
-        }
-        else
-        {
-            // no $$ expansion performed
-            userInput.argv[i] = calloc(strlen(token) + 1, sizeof(char)); // extra space for null terminator, use calloc so that memory space is initialized to \0
-            if (userInput.argv[i] == NULL)
-            {
-                raise(SIGUSR1);
-                return userInput;
-            }
-
-            // add the token to the array
-            strcpy(userInput.argv[i], token);
-        }
+        // add the token to the array
+        strcpy(userInput.argv[i], token);
     }
 
     // done processing args, append null pointer
@@ -548,19 +563,21 @@ void freeUserInput(UserInputStruct userInput)
     free(userInput.inputDestination_ptr);
     free(userInput.outputDestination_ptr);
     free(userInput.runInBackground);
-
+    free(userInput.checkSum);
     return;
 }
 
 int main()
 {
-    while (1)
+    if (control_var)
+    {
+        printf("\nWelcome to smallsh\nPress ctrl^c to interrupt a process, ctrl^z to toggle foreground-only mode, or ctrl^\\ to quit.\n");
+        control_var = 0;
+    }
+
+    while (!quit)
     {
         // register event handlers
-        struct sigaction SIGCHLD_action = {{0}};
-        sigemptyset(&SIGCHLD_action.sa_mask);
-        SIGCHLD_action.sa_sigaction = handle_SIGCHLD;
-        SIGCHLD_action.sa_flags = SA_RESTART | SA_SIGINFO;
 
         struct sigaction SIGINT_action = {{0}};
         sigemptyset(&SIGINT_action.sa_mask);
@@ -569,32 +586,30 @@ int main()
         struct sigaction SIGTSTP_action = {{0}};
         sigemptyset(&SIGTSTP_action.sa_mask);
         SIGTSTP_action.sa_sigaction = handle_SIGTSTP;
-        SIGTSTP_action.sa_flags = SA_RESTART | SA_SIGINFO;
+        SIGTSTP_action.sa_flags = SA_SIGINFO;
 
         struct sigaction SIGUSR1_action = {{0}};
         sigemptyset(&SIGUSR1_action.sa_mask);
         SIGUSR1_action.sa_sigaction = handle_SIGUSR1;
-        SIGUSR1_action.sa_flags = SA_RESTART | SA_SIGINFO;
+        SIGUSR1_action.sa_flags = SA_SIGINFO;
 
-        sigaction(SIGCHLD, &SIGCHLD_action, NULL);
+        struct sigaction SIGQUIT_action = {{0}};
+        sigemptyset(&SIGQUIT_action.sa_mask);
+        SIGQUIT_action.sa_sigaction = handle_SIGQUIT;
+        SIGQUIT_action.sa_flags = SA_SIGINFO;
+
         sigaction(SIGINT, &SIGINT_action, NULL);
         sigaction(SIGTSTP, &SIGTSTP_action, NULL);
         sigaction(SIGUSR1, &SIGUSR1_action, NULL);
+        sigaction(SIGQUIT, &SIGQUIT_action, NULL);
 
         // Get input from the user
         char *inputString = NULL;
 
         inputString = getInputString();
-        /*************
-         * TODO fix this handling:
-         * 
-         * //////////*/
         if (inputString == NULL)
         {
-            fprintf(stderr, "Failed to get input string \n");
-            fflush(NULL);
-            free(inputString);
-            exit(1);
+            continue;
         }
 
         // parse the input
@@ -638,7 +653,7 @@ int main()
                     free(userInput.inputDestination_ptr);
                     free(userInput.outputDestination_ptr);
                     free(userInput.runInBackground);
-                    
+
                     // check arguements.
                     size_t i = 0;
                     // free the argv contents
@@ -659,7 +674,9 @@ int main()
                     fprintf(stderr, "...during an argument allocation\n Read %zu args successfully before error.", i);
                     fflush(NULL);
                 }
-            } else { 
+            }
+            else
+            {
                 break;
             }
         }
@@ -699,11 +716,9 @@ int main()
 
             fflush(stdout);
         }
-        else if (strcmp(userInput.argv[0], "exit") == 0)
+        else if (strcmp(userInput.argv[0], "exit") == 0 || strcmp(userInput.argv[0], "quit") == 0)
         {
-            // kill all processes with SIGTERM
-            freeUserInput(userInput);
-            kill(0, SIGTERM);
+            raise(SIGQUIT);
         }
         else
         {
@@ -733,44 +748,51 @@ int main()
                  *********************************/
 
                 // reregister signal handling
-                struct sigaction SIGCHLD_action_child = {{0}};
-                sigemptyset(&SIGCHLD_action_child.sa_mask);
-                SIGCHLD_action_child.sa_handler = SIG_IGN;
-
+                // fg child should respond to sigint
                 struct sigaction SIGINT_action_child_fg = {{0}};
                 sigemptyset(&SIGINT_action_child_fg.sa_mask);
                 SIGINT_action_child_fg.sa_handler = SIG_DFL;
 
+                // bg child should ignore
                 struct sigaction SIGINT_action_child_bg = {{0}};
                 sigemptyset(&SIGINT_action_child_bg.sa_mask);
                 SIGINT_action_child_bg.sa_handler = SIG_IGN;
+
+                // ignore everything else too
+                struct sigaction SIGCHLD_action_child = {{0}};
+                sigemptyset(&SIGCHLD_action_child.sa_mask);
+                SIGCHLD_action_child.sa_handler = SIG_IGN;
 
                 struct sigaction SIGTSTP_action_child = {{0}};
                 sigemptyset(&SIGTSTP_action_child.sa_mask);
                 SIGTSTP_action_child.sa_handler = SIG_IGN;
 
                 struct sigaction SIGUSR1_action_child = {{0}};
-                sigemptyset(&SIGUSR1_action.sa_mask);
+                sigemptyset(&SIGUSR1_action_child.sa_mask);
                 SIGUSR1_action.sa_handler = SIG_IGN;
 
-                // check to see if they worked
+                struct sigaction SIGQUIT_action_child = {{0}};
+                sigemptyset(&SIGQUIT_action_child.sa_mask);
+                SIGQUIT_action.sa_handler = SIG_IGN;
+
+                // check to see if files opened, kill the child if it failed
                 if (inputDestination < 0)
                 {
                     fprintf(stdout, "Can not open file for input\n");
                     freeUserInput(userInput);
-                    exit(1);
+                    exit(2);
                 }
                 if (outputDestination < 0)
                 {
                     fprintf(stdout, "Can not open file for output\n");
                     freeUserInput(userInput);
-                    exit(1);
+                    exit(2);
                 }
 
                 if (*userInput.runInBackground)
                 {
                     /**********************************
-                     * BACKROUND CHILD
+                     * BACKGROUND CHILD
                      *********************************/
                     // stdin/out should be redirected regardless
                     dup2(inputDestination, 0);
@@ -800,6 +822,8 @@ int main()
                 sigaction(SIGTSTP, &SIGTSTP_action_child, NULL);
                 sigaction(SIGCHLD, &SIGCHLD_action_child, NULL);
                 sigaction(SIGUSR1, &SIGUSR1_action_child, NULL);
+                sigaction(SIGQUIT, &SIGQUIT_action_child, NULL);
+
                 execvp(userInput.argv[0], userInput.argv);
                 // exec only returns here if there is an error
                 perror("execvp");
@@ -811,6 +835,11 @@ int main()
                 /**********************************
                  * PARENT PROCESS
                  *********************************/
+                struct sigaction SIGCHLD_action = {{0}};
+                sigemptyset(&SIGCHLD_action.sa_mask);
+                SIGCHLD_action.sa_sigaction = handle_SIGCHLD;
+                SIGCHLD_action.sa_flags = SA_SIGINFO;
+                sigaction(SIGCHLD, &SIGCHLD_action, NULL);
 
                 if (*userInput.runInBackground)
                 {
@@ -823,12 +852,13 @@ int main()
                     struct sigaction temp_act = {{0}};
                     sigemptyset(&temp_act.sa_mask);
 
-                    // temporarily block sigtstp sigchld sigusr1
+                    // temporarily block sigtstp sigchld sigusr1 sigquit
                     sigaddset(&temp_act.sa_mask, SIGTSTP);
                     sigaddset(&temp_act.sa_mask, SIGCHLD);
                     sigaddset(&temp_act.sa_mask, SIGUSR1);
+                    sigaddset(&temp_act.sa_mask, SIGQUIT);
 
-                    sigprocmask(SIG_BLOCK, &SIGTSTP_action.sa_mask, NULL);
+                    sigprocmask(SIG_BLOCK, &temp_act.sa_mask, NULL);
 
                     spawnPid = waitpid(spawnPid, &childStatus, 0);
                     currentStatus = childStatus;
@@ -837,7 +867,7 @@ int main()
                         fprintf(stdout, "terminated by signal %d\n", WTERMSIG(currentStatus));
                     }
 
-                    sigprocmask(SIG_UNBLOCK, &SIGTSTP_action.sa_mask, NULL);
+                    sigprocmask(SIG_UNBLOCK, &temp_act.sa_mask, NULL);
                 }
             }
 
@@ -847,4 +877,26 @@ int main()
 
         freeUserInput(userInput);
     }
+
+    struct sigaction temp_action = {{0}};
+    sigemptyset(&temp_action.sa_mask);
+    sigaddset(&temp_action.sa_mask, SIGTERM);
+    sigprocmask(SIG_BLOCK, &temp_action.sa_mask, NULL);
+    // kill children
+    kill(0, SIGTERM);
+
+    int childStatus = NULL;
+    pid_t pid = wait(&childStatus);
+    while (pid > 0)
+    {
+        // wait for child processes to finish
+        if (WIFSIGNALED(childStatus))
+        {
+            fprintf(stdout, "\nBackground process (%d) is done: terminated by signal %d", pid, WTERMSIG(childStatus));
+        }
+        pid = wait(&childStatus);
+    }
+
+    fprintf(stdout, "\n\nThank you for using smallsh\n");
+    sigprocmask(SIG_UNBLOCK, &temp_action.sa_mask, NULL);
 }
