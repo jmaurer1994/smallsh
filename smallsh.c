@@ -48,9 +48,6 @@
 #include <string.h>
 #include <unistd.h>
 
-#ifndef UINT8_MAX
-#error "No support for uint8_t"
-#endif
 /*******************************************************************************
  * Structures
  *
