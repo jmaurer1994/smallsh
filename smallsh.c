@@ -584,7 +584,7 @@ int main() {
         sigaction(SIGTSTP, &SIGTSTP_action, NULL);
         sigaction(SIGUSR1, &SIGUSR1_action, NULL);
         sigaction(SIGQUIT, &SIGQUIT_action, NULL);
-t
+
         // Get input from the user
         char *inputString = NULL;
 
