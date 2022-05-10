@@ -46,8 +46,9 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/types.h>
+#include <sys/wait.h>
 #include <unistd.h>
-
 /*******************************************************************************
  * Structures
  *
@@ -66,7 +67,7 @@ typedef struct UserInputStruct UserInputStruct;
 int currentStatus = 0;
 int fgOnly = 0;
 int control_var = 1;
-int quit = 0;
+sig_atomic_t quit = 0;
 
 /******************************************************************************
  * Signal handlers
@@ -167,9 +168,16 @@ void handle_SIGUSR1(int signo, siginfo_t *siginfo, void *ucontext) {
     return;
 }
 
+/*****************************************************************
+ * TODO
+ * 
+ * This doesn't work quite how I want it to, re: ctrl+\
+ *
+ * **************************************************************/
 void handle_SIGQUIT(int signo, siginfo_t *siginfo, void *ucontext) {
     quit = 1;
-    return;
+    printf("test");
+    fflush(stdout);
 }
 
 /*******************************************************************************
@@ -326,15 +334,20 @@ char *getInputString() {
 
 /*******************************************************************************
  * parseToken()
+ *  Description:
+ *      Recursively parses tokens out of the original input string and populates
+ *      the non-argument attributes of the UserInputStruct. 
+ * 
+ *      Counts and sets argc so that the calling function can create argv[];
+ *  
+ *  Inputs:
+ *      UserInputStruct userInput
+ *      char* token
+ *      size_t* argc
  *
- * Inputs:
- *  UserInputStruct userInput
- *  char* token
- *  size_t* argc
- *
- * Outputs:
- *  Allocates a pointer for, and sets the value of argc
- *  parses < , > , & out of the token array and builds the userInput struct
+ *  Outputs:
+ *      Allocates a pointer for, and sets the value of argc
+ *      parses < , > , & out of the token array and builds the userInput struct
  *
  ******************************************************************************/
 void parseToken(UserInputStruct userInput, char *token, size_t *argc) {
@@ -542,8 +555,6 @@ void freeUserInput(UserInputStruct userInput) {
 /*******************************************************************************
  * main()
  *
- *
- *
  ******************************************************************************/
 int main() {
     if (control_var) {
@@ -556,31 +567,32 @@ int main() {
     }
 
     // main execution loop
+    // register event handlers
+    struct sigaction SIGINT_action = {{0}};
+    sigemptyset(&SIGINT_action.sa_mask);
+    SIGINT_action.sa_handler = SIG_IGN;
+
+    struct sigaction SIGTSTP_action = {{0}};
+    sigemptyset(&SIGTSTP_action.sa_mask);
+    SIGTSTP_action.sa_sigaction = handle_SIGTSTP;
+    SIGTSTP_action.sa_flags = SA_SIGINFO;
+
+    struct sigaction SIGUSR1_action = {{0}};
+    sigemptyset(&SIGUSR1_action.sa_mask);
+    SIGUSR1_action.sa_sigaction = handle_SIGUSR1;
+    SIGUSR1_action.sa_flags = SA_SIGINFO;
+
+    struct sigaction SIGQUIT_action = {{0}};
+    sigemptyset(&SIGQUIT_action.sa_mask);
+    SIGQUIT_action.sa_sigaction = handle_SIGQUIT;
+    SIGQUIT_action.sa_flags = SA_RESTART | SA_SIGINFO;
+
+    sigaction(SIGINT, &SIGINT_action, NULL);
+    sigaction(SIGTSTP, &SIGTSTP_action, NULL);
+    sigaction(SIGUSR1, &SIGUSR1_action, NULL);
+    sigaction(SIGQUIT, &SIGQUIT_action, NULL);
+    
     while (!quit) {
-        // register event handlers
-        struct sigaction SIGINT_action = {{0}};
-        sigemptyset(&SIGINT_action.sa_mask);
-        SIGINT_action.sa_handler = SIG_IGN;
-
-        struct sigaction SIGTSTP_action = {{0}};
-        sigemptyset(&SIGTSTP_action.sa_mask);
-        SIGTSTP_action.sa_sigaction = handle_SIGTSTP;
-        SIGTSTP_action.sa_flags = SA_SIGINFO;
-
-        struct sigaction SIGUSR1_action = {{0}};
-        sigemptyset(&SIGUSR1_action.sa_mask);
-        SIGUSR1_action.sa_sigaction = handle_SIGUSR1;
-        SIGUSR1_action.sa_flags = SA_SIGINFO;
-
-        struct sigaction SIGQUIT_action = {{0}};
-        sigemptyset(&SIGQUIT_action.sa_mask);
-        SIGQUIT_action.sa_sigaction = handle_SIGQUIT;
-        SIGQUIT_action.sa_flags = SA_SIGINFO;
-
-        sigaction(SIGINT, &SIGINT_action, NULL);
-        sigaction(SIGTSTP, &SIGTSTP_action, NULL);
-        sigaction(SIGUSR1, &SIGUSR1_action, NULL);
-        sigaction(SIGQUIT, &SIGQUIT_action, NULL);
 
         // Get input from the user
         char *inputString = NULL;
@@ -600,7 +612,7 @@ int main() {
             userInput = getuserInputFromString(inputString);
 
             /*****************************************************************
-             *
+             * TODO
              * This validation logic should be looked at again to make sure
              * it's clearing everything properly (i dont think it is from a
              * quick sleep deprived glance)
@@ -628,14 +640,9 @@ int main() {
                                     "allocation\n");
                     fflush(stderr);
                 } else {
-                    free(userInput.checkSum);
-                    free(userInput.inputDestination_ptr);
-                    free(userInput.outputDestination_ptr);
-                    free(userInput.runInBackground);
 
                     // check arguements.
                     size_t i = 0;
-                    // free the argv contents
                     while (1) {
                         if (userInput.argv[i] != NULL) {
                             free(userInput.argv[i]);
@@ -645,11 +652,10 @@ int main() {
                         }
                     }
 
-                    free(userInput.argv);
                     fprintf(stderr,
                             "...during an argument "
                             "allocation\n Read %zu args "
-                            "successfully before error.",
+                            "successfully before error.\n",
                             i);
                     fflush(stderr);
                 }
@@ -663,7 +669,7 @@ int main() {
         // execute the input
 
         /*****************************************************************
-         *
+         * TODO 
          * This should probably be handled better in its own function
          * and not in main
          *
