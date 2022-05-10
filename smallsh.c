@@ -176,8 +176,6 @@ void handle_SIGUSR1(int signo, siginfo_t *siginfo, void *ucontext) {
  * **************************************************************/
 void handle_SIGQUIT(int signo, siginfo_t *siginfo, void *ucontext) {
     quit = 1;
-    printf("test");
-    fflush(stdout);
 }
 
 /*******************************************************************************
