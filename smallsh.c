@@ -30,7 +30,7 @@
  * Instructions:
  *
  * Compile with
- *  gcc -std=c99 -Wall -g -o smallsh smallsh.c -lm
+ *  gcc -std=c99 -Wall -o smallsh smallsh.c -lm
  *
  */
 
