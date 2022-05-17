@@ -88,7 +88,7 @@ void handle_SIGCHLD(int signo, siginfo_t *siginfo, void *ucontext) {
 
         size_t nDigits =
             floor(log10(abs(tempPid))) +
-            1; // I found this on a SO post but couldnt find it to cite.
+            1; // I found this here: https://stackoverflow.com/a/3068420
         char pidChar[nDigits];
 
         size_t count = 1;
